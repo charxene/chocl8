@@ -23,7 +23,7 @@ pub fn main() anyerror!void {
     const renderer = try sdl.createRenderer(window, null, .{ .accelerated = true });
     defer renderer.destroy();
 
-    chocl8.run();
+    try chocl8.run();
 
     mainLoop: while (true) {
         while (sdl.pollEvent()) |ev| {
