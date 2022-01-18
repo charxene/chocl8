@@ -1,28 +1,32 @@
 const std = @import("std");
-const SDL = @import("sdl2");
+const sdl = @import("sdl2");
+const chocl8 = @import("chocl8.zig");
 
 pub fn main() anyerror!void {
-    try SDL.init(.{
+    try sdl.init(.{
         .video = true,
         .events = true,
         .audio = true,
     });
-    defer SDL.quit();
+    defer sdl.quit();
 
-    var window = try SDL.createWindow(
-        "SDL2 Wrapper Demo",
-        .{ .centered = {} }, .{ .centered = {} },
-        640, 480,
+    const window = try sdl.createWindow(
+        "chocl8",
+        .{ .centered = {} },
+        .{ .centered = {} },
+        640,
+        480,
         .{ .shown = true },
     );
     defer window.destroy();
 
-    var renderer = try SDL.createRenderer(window, null, .{ .accelerated = true });
+    const renderer = try sdl.createRenderer(window, null, .{ .accelerated = true });
     defer renderer.destroy();
 
-    std.log.info("All your codebase are belong to us.", .{});
+    chocl8.run();
+
     mainLoop: while (true) {
-        while (SDL.pollEvent()) |ev| {
+        while (sdl.pollEvent()) |ev| {
             switch (ev) {
                 .quit => break :mainLoop,
                 else => {},
