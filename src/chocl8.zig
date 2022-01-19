@@ -19,6 +19,28 @@ const font = [_]u8{
     0xF0, 0x80, 0xF0, 0x80, 0x80, // F
 };
 
+const Instruction = struct {
+    short: u16,
+    w: u4,
+    x: u4,
+    y: u4,
+    n: u4,
+    nn: u8,
+    nnn: u12,
+
+    fn decode(lo: u8, hi: u8) Instruction {
+        return Instruction{
+            .short = @as(u16, hi) << 8 | @as(u16, lo),
+            .w = @truncate(u4, hi >> 4),
+            .x = @truncate(u4, lo),
+            .y = @truncate(u4, lo >> 4),
+            .n = @truncate(u4, lo),
+            .nn = lo,
+            .nnn = @as(u12, hi & 0x0F) << 8 | @as(u12, lo),
+        };
+    }
+};
+
 const Chip8 = struct {
     /// mem is 4096 bytes of memory
     /// 0x0 to 0x1FF is reserved for internal use
@@ -26,6 +48,8 @@ const Chip8 = struct {
     mem: [4096]u8 = [_]u8{0} ** 4096,
     /// stack is a stack of size 16 for tracking mem locations
     stack: [16]u16 = [_]u16{0} ** 16,
+    // pc is the program counter
+    pc: u16 = 0,
     /// index is a register for pointing at mem locations
     index: u16 = 0,
     /// delay is a counter decremented at 60hz
@@ -34,28 +58,69 @@ const Chip8 = struct {
     sound: u8 = 0,
     /// reg is a 16 wide bank of 8-bit registers
     reg: [16]u8 = [_]u8{0} ** 16,
+    // fbuf is a 64x32 bit representation of the display
+    fbuf: [32]u64 = [_]u64{0} ** 32,
 
     fn init() Chip8 {
         var c8 = Chip8{};
-        c8.reset();
+        //@memset(@ptrCast([*]u8, &c8), 0, @sizeOf(Chip8));
+        @memcpy(c8.mem[0x50..], font[0..], font.len);
         return c8;
     }
 
-    pub fn loadRom(_: Chip8, _: []const u8) void {
+    pub fn loadRom(self: *Chip8, data: []const u8) void {
         // validate size will fit in memory
-        // copy storting at 0x200
+        if (self.mem.len - 0x200 < data.len) {
+            // return error
+        }
+        @memcpy(self.mem[0x200..], @ptrCast([*]const u8, data[0..]), data.len);
+        self.pc = 0x200;
     }
 
-    pub fn reset(self: *Chip8) void {
-        @memset(@ptrCast([*]u8, self), 0, @sizeOf(Chip8));
-        @memcpy(chip8.mem[0x50..], font[0..], font.len);
+    pub fn step(self: *Chip8) void {
+        const inst = Instruction.decode(self.mem[self.pc + 1], self.mem[self.pc]);
+        self.pc += 2;
+        switch (inst.w) {
+            0x0 => {
+                // clear screen
+                @memset(@ptrCast([*]u8, self.fbuf[0..]), 0, @sizeOf(u64) * self.fbuf.len);
+            },
+            0x1 => {
+                // jump to nnn
+                self.pc = @as(u16, inst.nnn);
+            },
+            0x6 => {
+                // set r[x] = nn
+                self.reg[inst.x] = inst.nn;
+            },
+            0x7 => {
+                // r[x] += nn
+                self.reg[inst.x] += inst.nn;
+            },
+            0xA => {
+                // index = nnn
+                self.index = inst.nnn;
+            },
+            0xD => {
+                // draw sprite
+                std.log.info("drawing", .{});
+            },
+            else => {
+                std.log.info("unimplemented", .{});
+            },
+        }
     }
 };
 
 // chip8 singleton
-var chip8 = Chip8.init();
+pub var chip8 = Chip8.init();
 
 pub fn run() !void {
     const stdout = std.io.getStdOut().writer();
     try stdout.writeAll(chip8.mem[0..]);
+    std.io.getStdOut().close();
+    std.log.info("running", .{});
+    while (true) {
+        chip8.step();
+    }
 }

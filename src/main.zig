@@ -23,21 +23,34 @@ pub fn main() anyerror!void {
     const renderer = try sdl.createRenderer(window, null, .{ .accelerated = true });
     defer renderer.destroy();
 
-    try chocl8.run();
-
-    mainLoop: while (true) {
-        while (sdl.pollEvent()) |ev| {
-            switch (ev) {
-                .quit => break :mainLoop,
-                else => {},
-            }
-        }
-
-        try renderer.setColorRGB(0xF7, 0xA4, 0x1D);
-        try renderer.clear();
-
-        renderer.present();
+    if (std.os.argv.len > 1) {
+        std.log.info("loading rom from {s}", .{std.os.argv[1]});
+        const file = try std.fs.openFileAbsolute(
+            std.mem.span(std.os.argv[1]),
+            .{ .read = true },
+        );
+        defer file.close();
+        var data: [4096]u8 = undefined;
+        const n = try file.readAll(&data);
+        chocl8.chip8.loadRom(data[0..n]);
+        try chocl8.run();
+    } else {
+        std.log.info("no rom specified", .{});
     }
+
+    // mainLoop: while (true) {
+    //     while (sdl.pollEvent()) |ev| {
+    //         switch (ev) {
+    //             .quit => break :mainLoop,
+    //             else => {},
+    //         }
+    //     }
+
+    //     try renderer.setColorRGB(0xF7, 0xA4, 0x1D);
+    //     try renderer.clear();
+
+    //     renderer.present();
+    // }
 }
 
 test "basic test" {
