@@ -48,6 +48,8 @@ const Chip8 = struct {
     mem: [4096]u8 = [_]u8{0} ** 4096,
     /// stack is a stack of size 16 for tracking mem locations
     stack: [16]u16 = [_]u16{0} ** 16,
+    /// sp is the stack pointer
+    sp: u8 = 0,
     // pc is the program counter
     pc: u16 = 0,
     /// index is a register for pointing at mem locations
@@ -77,23 +79,55 @@ const Chip8 = struct {
         self.pc = 0x200;
     }
 
-    pub fn step(self: *Chip8) void {
+    pub fn step(self: *Chip8, keys: u16) void {
         const inst = Instruction.decode(self.mem[self.pc + 1], self.mem[self.pc]);
         //std.log.info("inst {} {} {} {}", .{ inst.w, inst.x, inst.y, inst.n });
         self.pc += 2;
         switch (inst.w) {
-            0x0 => {
-                // clear screen
-                std.log.info("{}: clear", .{self.pc - 2});
-                @memset(@ptrCast([*]u8, self.fbuf[0..]), 0, @sizeOf(u32) * self.fbuf.len);
+            0x0 => switch (inst.nn) {
+                0xEE => {
+                    std.log.info("{}: ret", .{self.pc - 2});
+                    self.pc = self.stack[self.sp];
+                    self.sp -= 1;
+                },
+                0xE0 => {
+                    std.log.info("{}: clear fbuf", .{self.pc - 2});
+                    @memset(@ptrCast([*]u8, self.fbuf[0..]), 0, @sizeOf(u32) * self.fbuf.len);
+                },
+                else => {
+                    @panic("0x0*NN unimplemented");
+                },
             },
             0x1 => {
-                // jump to nnn
                 // std.log.info("{}: j {}", .{ self.pc - 2, inst.nnn });
                 if (inst.nnn == self.pc - 2) {
                     //@panic("infinite loop");
                 }
                 self.pc = @as(u16, inst.nnn);
+            },
+            0x2 => {
+                std.log.info("call {}", .{inst.nnn});
+                self.sp += 1;
+                self.stack[self.sp] = self.pc;
+                self.pc = inst.nnn;
+            },
+            0x3 => {
+                std.log.info("jump pc+2 ({}) if r[{}] ({}) == {}", .{ self.pc + 2, inst.x, self.reg[inst.x], inst.nn });
+                if (self.reg[inst.x] == inst.nn) {
+                    self.pc += 2;
+                }
+            },
+            0x4 => {
+                std.log.info("jump pc+2 ({}) if r[{}] ({}) != {}", .{ self.pc + 2, inst.x, self.reg[inst.x], inst.nn });
+                if (self.reg[inst.x] != inst.nn) {
+                    self.pc += 2;
+                }
+            },
+            0x5 => {
+                std.log.info("jump pc+2 ({}) if r[{}] ({}) == r[{}] ({})", .{ self.pc + 2, inst.x, self.reg[inst.x], inst.y, self.reg[inst.y] });
+                if (self.reg[inst.x] == self.reg[inst.y]) {
+                    self.pc += 2;
+                }
             },
             0x6 => {
                 std.log.info("{}: r[{}] = {}", .{ self.pc - 2, inst.x, inst.nn });
@@ -103,9 +137,70 @@ const Chip8 = struct {
                 std.log.info("{}: r[{}] = r[{}] ({}) + {}", .{ self.pc - 2, inst.x, inst.x, self.reg[inst.x], inst.nn });
                 self.reg[inst.x] += inst.nn;
             },
+            0x8 => switch (inst.n) {
+                0x0 => {
+                    std.log.info("{}: r[{}] = r[{}] ({})", .{ self.pc - 2, inst.x, inst.y, self.reg[inst.y] });
+                    self.reg[inst.x] = self.reg[inst.y];
+                },
+                0x1 => {
+                    std.log.info("{}: r[{}] |= r[{}] ({})", .{ self.pc - 2, inst.x, inst.y, self.reg[inst.y] });
+                    self.reg[inst.x] |= self.reg[inst.y];
+                },
+                0x2 => {
+                    std.log.info("{}: r[{}] &= r[{}] ({})", .{ self.pc - 2, inst.x, inst.y, self.reg[inst.y] });
+                    self.reg[inst.x] &= self.reg[inst.y];
+                },
+                0x3 => {
+                    std.log.info("{}: r[{}] ^= r[{}] ({})", .{ self.pc - 2, inst.x, inst.y, self.reg[inst.y] });
+                    self.reg[inst.x] ^= self.reg[inst.y];
+                },
+                0x4 => {
+                    std.log.info("{}: r[{}] += r[{}] ({})", .{ self.pc - 2, inst.x, inst.y, self.reg[inst.y] });
+                    const result = @intCast(u32, self.reg[inst.x]) + @intCast(u32, self.reg[inst.y]);
+                    self.reg[0xF] = if (result > 0xFF) 1 else 0;
+                    self.reg[inst.x] = @truncate(u8, result);
+                },
+                0x5 => {
+                    std.log.info("{}: r[{}] -= r[{}] ({})", .{ self.pc - 2, inst.x, inst.y, self.reg[inst.y] });
+                    self.reg[0xF] = if (self.reg[inst.x] > self.reg[inst.y]) 1 else 0;
+                    self.reg[inst.x] -= self.reg[inst.y];
+                },
+                0x6 => {
+                    std.log.info("{}: r[{}] = r[{}] ({}) >> 1", .{ self.pc - 2, inst.x, inst.x, self.reg[inst.x] });
+                    self.reg[0xF] = self.reg[inst.x] & 0x1;
+                    self.reg[inst.x] = self.reg[inst.x] >> 1;
+                },
+                0x7 => {
+                    std.log.info("{}: r[{}] = r[{}] ({}) - r[{}] ({})", .{ self.pc - 2, inst.x, inst.y, self.reg[inst.y], inst.x, self.reg[inst.x] });
+                    self.reg[0xF] = if (self.reg[inst.y] > self.reg[inst.x]) 1 else 0;
+                    self.reg[inst.x] = self.reg[inst.y] - self.reg[inst.x];
+                },
+                0xE => {
+                    std.log.info("{}: r[{}] = r[{}] ({}) << 1", .{ self.pc - 2, inst.x, inst.x, self.reg[inst.x] });
+                    self.reg[0xF] = self.reg[inst.x] & 0x80;
+                    self.reg[inst.x] = self.reg[inst.x] << 1;
+                },
+                else => {
+                    @panic("0x8*NN unimplemented");
+                },
+            },
+            0x9 => {
+                std.log.info("{}: jump pc+2 ({}) if r[{}] ({}) != r[{}] ({})", .{ self.pc - 2, self.pc + 2, inst.x, self.reg[inst.x], inst.y, self.reg[inst.y] });
+                if (self.reg[inst.x] != self.reg[inst.y]) {
+                    self.pc += 2;
+                }
+            },
             0xA => {
-                std.log.info("{}: i={}", .{ self.pc - 2, inst.nnn });
+                std.log.info("{}: index={}", .{ self.pc - 2, inst.nnn });
                 self.index = inst.nnn;
+            },
+            0xB => {
+                std.log.info("{}: jump r[0] ({}) + {}", .{ self.pc + 2, self.reg[0], inst.nnn });
+                self.pc = self.reg[0] + inst.nnn;
+            },
+            0xC => {
+                //random
+                std.log.info("random unimplemented", .{});
             },
             0xD => {
                 // draw sprite
@@ -118,8 +213,71 @@ const Chip8 = struct {
                     self.fbuf[y + i] ^= @intCast(u64, self.mem[self.index + i]) << @truncate(u6, 8 * 7 - x);
                 }
             },
-            else => {
-                std.log.info("unimplemented", .{});
+            0xE => switch (inst.nn) {
+                0x9E => {
+                    std.log.info("{}: jump pc+2 ({}) if keys[r[{}] ({})]", .{ self.pc - 2, self.pc + 2, inst.x, self.reg[inst.x] });
+                    if (0 != (keys & self.reg[inst.x])) {
+                        self.pc += 1;
+                    }
+                },
+                0xA1 => {
+                    std.log.info("{}: jump pc+2 ({}) if !keys[r[{}] ({})]", .{ self.pc - 2, self.pc + 2, inst.x, self.reg[inst.x] });
+                    if (0 == (keys & self.reg[inst.x])) {
+                        self.pc += 1;
+                    }
+                },
+                else => {
+                    @panic("0xE*NN unimplemented");
+                },
+            },
+            0xF => switch (inst.nn) {
+                0x07 => {
+                    std.log.info("{}: reg[{}] = delay ({})", .{ self.pc - 2, inst.x, self.delay });
+                    self.reg[inst.x] = self.delay;
+                },
+                0x0A => {
+                    std.log.info("{}: wait k; reg[{}] = k", .{ self.pc - 2, inst.x });
+                    if (keys != 0) {
+                        var i: u4 = 0;
+                        while (i < 16) : (i += 1) {
+                            if ((keys & (@intCast(u16, 1) << i)) != 0) {
+                                self.reg[inst.x] = i;
+                            }
+                        }
+                    } else {
+                        self.pc -= 2; // manually loop till key is pressed
+                    }
+                },
+                0x15 => {
+                    std.log.info("{}: delay = r[{}] ({})", .{ self.pc - 2, inst.x, self.reg[inst.x] });
+                    self.delay = self.reg[inst.x];
+                },
+                0x18 => {
+                    std.log.info("{}: sound = r[{}] ({})", .{ self.pc - 2, inst.x, self.reg[inst.x] });
+                    self.sound = self.reg[inst.x];
+                },
+                0x1E => {
+                    std.log.info("{}: index = index ({}) + r[{}] ({})", .{ self.pc - 2, self.index, inst.x, self.reg[inst.x] });
+                    self.index += self.reg[inst.x];
+                },
+                0x29 => {
+                    std.log.info("{}: index = font[reg[{}] ({})]", .{ self.pc - 2, inst.x, self.reg[inst.x] });
+                    self.index = 0x50 + self.reg[inst.x] * 5;
+                },
+                0x33 => {
+                    std.log.info("{}: mem[index ({}):] = bcd reg[{}] ({})", .{ self.pc - 2, self.index, inst.x, self.reg[inst.x] });
+                },
+                0x55 => {
+                    std.log.info("{}: store mem[index ({})] reg[{}:]", .{ self.pc - 2, self.index, inst.x });
+                    @memcpy(@ptrCast([*]u8, self.mem[self.index..]), @ptrCast([*]u8, self.reg[inst.x..]), 2 * (15 - inst.x));
+                },
+                0x65 => {
+                    std.log.info("{}: load mem[i ({})] reg[{}:]", .{ self.pc - 2, self.index, inst.x });
+                    @memcpy(@ptrCast([*]u8, self.reg[inst.x..]), @ptrCast([*]u8, self.mem[self.index..]), 2 * (15 - inst.x));
+                },
+                else => {
+                    @panic("0xF*NN unimplemented");
+                },
             },
         }
     }

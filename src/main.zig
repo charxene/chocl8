@@ -62,7 +62,7 @@ pub fn main() anyerror!void {
             switch (ev) {
                 .quit => break :mainLoop,
                 .key_up => switch (ev.key_up.keycode) {
-                    .s => chocl8.chip8.step(),
+                    .s => if (!autorun) chocl8.chip8.step(0),
                     .r => autorun = true,
                     .q => return,
                     else => {},
@@ -71,7 +71,7 @@ pub fn main() anyerror!void {
             }
         }
         if (autorun) {
-            chocl8.chip8.step();
+            chocl8.chip8.step(0);
         }
         try renderer.setColor(sdl.Color.black);
         try renderer.clear();
