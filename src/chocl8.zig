@@ -32,11 +32,11 @@ const Instruction = struct {
         return Instruction{
             .short = @as(u16, hi) << 8 | @as(u16, lo),
             .w = @truncate(u4, hi >> 4),
-            .x = @truncate(u4, lo),
+            .x = @truncate(u4, hi),
             .y = @truncate(u4, lo >> 4),
             .n = @truncate(u4, lo),
             .nn = lo,
-            .nnn = @as(u12, hi & 0x0F) << 8 | @as(u12, lo),
+            .nnn = @as(u12, hi & 0xF) << 8 | @as(u12, lo),
         };
     }
 };
@@ -58,7 +58,7 @@ const Chip8 = struct {
     sound: u8 = 0,
     /// reg is a 16 wide bank of 8-bit registers
     reg: [16]u8 = [_]u8{0} ** 16,
-    // fbuf is a 64x32 bit representation of the display
+    // fbuf is the framebuffer of the screen
     fbuf: [32]u64 = [_]u64{0} ** 32,
 
     fn init() Chip8 {
@@ -79,31 +79,44 @@ const Chip8 = struct {
 
     pub fn step(self: *Chip8) void {
         const inst = Instruction.decode(self.mem[self.pc + 1], self.mem[self.pc]);
+        //std.log.info("inst {} {} {} {}", .{ inst.w, inst.x, inst.y, inst.n });
         self.pc += 2;
         switch (inst.w) {
             0x0 => {
                 // clear screen
-                @memset(@ptrCast([*]u8, self.fbuf[0..]), 0, @sizeOf(u64) * self.fbuf.len);
+                std.log.info("{}: clear", .{self.pc - 2});
+                @memset(@ptrCast([*]u8, self.fbuf[0..]), 0, @sizeOf(u32) * self.fbuf.len);
             },
             0x1 => {
                 // jump to nnn
+                // std.log.info("{}: j {}", .{ self.pc - 2, inst.nnn });
+                if (inst.nnn == self.pc - 2) {
+                    //@panic("infinite loop");
+                }
                 self.pc = @as(u16, inst.nnn);
             },
             0x6 => {
-                // set r[x] = nn
+                std.log.info("{}: r[{}] = {}", .{ self.pc - 2, inst.x, inst.nn });
                 self.reg[inst.x] = inst.nn;
             },
             0x7 => {
-                // r[x] += nn
+                std.log.info("{}: r[{}] = r[{}] ({}) + {}", .{ self.pc - 2, inst.x, inst.x, self.reg[inst.x], inst.nn });
                 self.reg[inst.x] += inst.nn;
             },
             0xA => {
-                // index = nnn
+                std.log.info("{}: i={}", .{ self.pc - 2, inst.nnn });
                 self.index = inst.nnn;
             },
             0xD => {
                 // draw sprite
-                std.log.info("drawing", .{});
+                std.log.info("{}: drawing mem[{}] with h={}px @(r[{}]{}, r[{}]{})", .{ self.pc - 2, self.index, inst.n, inst.x, self.reg[inst.x], inst.y, self.reg[inst.y] });
+                const height: u8 = inst.n;
+                const x: u8 = @truncate(u6, self.reg[@truncate(u4, inst.x)] % 64);
+                const y: u8 = self.reg[@truncate(u4, inst.y)] % 32;
+                var i: usize = 0;
+                while ((i < height) and (y + i < 32)) : (i += 1) {
+                    self.fbuf[y + i] ^= @intCast(u64, self.mem[self.index + i]) << @truncate(u6, 8 * 7 - x);
+                }
             },
             else => {
                 std.log.info("unimplemented", .{});
@@ -114,13 +127,3 @@ const Chip8 = struct {
 
 // chip8 singleton
 pub var chip8 = Chip8.init();
-
-pub fn run() !void {
-    const stdout = std.io.getStdOut().writer();
-    try stdout.writeAll(chip8.mem[0..]);
-    std.io.getStdOut().close();
-    std.log.info("running", .{});
-    while (true) {
-        chip8.step();
-    }
-}
