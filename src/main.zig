@@ -64,6 +64,7 @@ pub fn main() anyerror!void {
                 .key_up => switch (ev.key_up.keycode) {
                     .s => chocl8.chip8.step(),
                     .r => autorun = true,
+                    .q => return,
                     else => {},
                 },
                 else => {},
