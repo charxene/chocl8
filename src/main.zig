@@ -57,29 +57,64 @@ pub fn main() anyerror!void {
     }
 
     var autorun: bool = false;
+    var keys: u16 = 0;
     mainLoop: while (true) {
+        const start = sdl.c.SDL_GetPerformanceCounter();
         while (sdl.pollEvent()) |ev| {
             switch (ev) {
                 .quit => break :mainLoop,
+                .key_down => keys |= keymap(ev.key_down.keycode),
                 .key_up => switch (ev.key_up.keycode) {
-                    .s => if (!autorun) chocl8.chip8.step(0),
+                    .s => if (!autorun) chocl8.chip8.step(keys),
                     .r => autorun = true,
                     .q => return,
-                    else => {},
+                    else => keys &= ~keymap(ev.key_up.keycode),
                 },
                 else => {},
             }
         }
+
         if (autorun) {
-            chocl8.chip8.step(0);
+            var i: usize = 0;
+            while (i < chocl8.instructions_per_cycle) : (i += 1) {
+                chocl8.chip8.step(keys);
+            }
         }
+
         try renderer.setColor(sdl.Color.black);
         try renderer.clear();
         try draw(renderer, chocl8.chip8.fbuf);
         renderer.present();
+
+        const end = sdl.c.SDL_GetPerformanceCounter();
+        const elapsed = 1000.0 * @intToFloat(f64, end - start) / @intToFloat(f64, sdl.c.SDL_GetPerformanceFrequency());
+        if (1000.0 / 60.0 >= elapsed) {
+            sdl.delay(@floatToInt(u32, 1000.0 / 60.0 - elapsed));
+        }
     }
 }
 
+fn keymap(keycode: sdl.Keycode) u16 {
+    switch (keycode) {
+        .@"0" => return 1 << 0,
+        .@"1" => return 1 << 1,
+        .@"2" => return 1 << 2,
+        .@"3" => return 1 << 3,
+        .@"4" => return 1 << 4,
+        .@"5" => return 1 << 5,
+        .@"6" => return 1 << 6,
+        .@"7" => return 1 << 7,
+        .@"8" => return 1 << 8,
+        .@"9" => return 1 << 9,
+        .a => return 1 << 0xA,
+        .b => return 1 << 0xB,
+        .c => return 1 << 0xC,
+        .d => return 1 << 0xD,
+        .e => return 1 << 0xE,
+        .f => return 1 << 0xF,
+        else => return 0,
+    }
+}
 test "basic test" {
     try std.testing.expectEqual(10, 3 + 7);
 }

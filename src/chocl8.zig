@@ -1,5 +1,7 @@
 const std = @import("std");
 
+var prng = std.rand.DefaultPrng.init(0);
+
 const font = [_]u8{
     0xF0, 0x90, 0x90, 0x90, 0xF0, // 0
     0x20, 0x60, 0x20, 0x20, 0x70, // 1
@@ -18,6 +20,9 @@ const font = [_]u8{
     0xF0, 0x80, 0xF0, 0x80, 0xF0, // E
     0xF0, 0x80, 0xF0, 0x80, 0x80, // F
 };
+
+/// instructions_per_cycle is the number of instructions per a cycle at 60Hz
+pub const instructions_per_cycle = 12;
 
 const Instruction = struct {
     short: u16,
@@ -62,6 +67,8 @@ const Chip8 = struct {
     reg: [16]u8 = [_]u8{0} ** 16,
     // fbuf is the framebuffer of the screen
     fbuf: [32]u64 = [_]u64{0} ** 32,
+    // counter tracks the number of instructions executed
+    counter: u64 = 0,
 
     fn init() Chip8 {
         var c8 = Chip8{};
@@ -81,8 +88,14 @@ const Chip8 = struct {
 
     pub fn step(self: *Chip8, keys: u16) void {
         const inst = Instruction.decode(self.mem[self.pc + 1], self.mem[self.pc]);
-        //std.log.info("inst {} {} {} {}", .{ inst.w, inst.x, inst.y, inst.n });
         self.pc += 2;
+
+        self.counter += 1;
+        if (self.counter % instructions_per_cycle == 0) {
+            if (self.delay > 0) self.delay -= 1;
+            if (self.sound > 0) self.sound -= 1;
+        }
+
         switch (inst.w) {
             0x0 => switch (inst.nn) {
                 0xEE => {
@@ -95,13 +108,12 @@ const Chip8 = struct {
                     @memset(@ptrCast([*]u8, self.fbuf[0..]), 0, @sizeOf(u32) * self.fbuf.len);
                 },
                 else => {
-                    @panic("0x0*NN unimplemented");
+                    @panic("0x0*NN variant uknown");
                 },
             },
             0x1 => {
-                // std.log.info("{}: j {}", .{ self.pc - 2, inst.nnn });
-                if (inst.nnn == self.pc - 2) {
-                    //@panic("infinite loop");
+                if (inst.nnn != self.pc - 2) {
+                    std.log.info("{}: jump {}", .{ self.pc - 2, inst.nnn });
                 }
                 self.pc = @as(u16, inst.nnn);
             },
@@ -112,19 +124,19 @@ const Chip8 = struct {
                 self.pc = inst.nnn;
             },
             0x3 => {
-                std.log.info("jump pc+2 ({}) if r[{}] ({}) == {}", .{ self.pc + 2, inst.x, self.reg[inst.x], inst.nn });
+                std.log.info("{}: jump pc+2 ({}) if r[{}] ({}) == {}", .{ self.pc - 2, self.pc + 2, inst.x, self.reg[inst.x], inst.nn });
                 if (self.reg[inst.x] == inst.nn) {
                     self.pc += 2;
                 }
             },
             0x4 => {
-                std.log.info("jump pc+2 ({}) if r[{}] ({}) != {}", .{ self.pc + 2, inst.x, self.reg[inst.x], inst.nn });
+                std.log.info("{}: jump pc+2 ({}) if r[{}] ({}) != {}", .{ self.pc - 2, self.pc + 2, inst.x, self.reg[inst.x], inst.nn });
                 if (self.reg[inst.x] != inst.nn) {
                     self.pc += 2;
                 }
             },
             0x5 => {
-                std.log.info("jump pc+2 ({}) if r[{}] ({}) == r[{}] ({})", .{ self.pc + 2, inst.x, self.reg[inst.x], inst.y, self.reg[inst.y] });
+                std.log.info("{}: jump pc+2 ({}) if r[{}] ({}) == r[{}] ({})", .{ self.pc - 2, self.pc + 2, inst.x, self.reg[inst.x], inst.y, self.reg[inst.y] });
                 if (self.reg[inst.x] == self.reg[inst.y]) {
                     self.pc += 2;
                 }
@@ -135,7 +147,7 @@ const Chip8 = struct {
             },
             0x7 => {
                 std.log.info("{}: r[{}] = r[{}] ({}) + {}", .{ self.pc - 2, inst.x, inst.x, self.reg[inst.x], inst.nn });
-                self.reg[inst.x] += inst.nn;
+                self.reg[inst.x] +%= inst.nn;
             },
             0x8 => switch (inst.n) {
                 0x0 => {
@@ -163,7 +175,7 @@ const Chip8 = struct {
                 0x5 => {
                     std.log.info("{}: r[{}] -= r[{}] ({})", .{ self.pc - 2, inst.x, inst.y, self.reg[inst.y] });
                     self.reg[0xF] = if (self.reg[inst.x] > self.reg[inst.y]) 1 else 0;
-                    self.reg[inst.x] -= self.reg[inst.y];
+                    self.reg[inst.x] -%= self.reg[inst.y];
                 },
                 0x6 => {
                     std.log.info("{}: r[{}] = r[{}] ({}) >> 1", .{ self.pc - 2, inst.x, inst.x, self.reg[inst.x] });
@@ -173,15 +185,15 @@ const Chip8 = struct {
                 0x7 => {
                     std.log.info("{}: r[{}] = r[{}] ({}) - r[{}] ({})", .{ self.pc - 2, inst.x, inst.y, self.reg[inst.y], inst.x, self.reg[inst.x] });
                     self.reg[0xF] = if (self.reg[inst.y] > self.reg[inst.x]) 1 else 0;
-                    self.reg[inst.x] = self.reg[inst.y] - self.reg[inst.x];
+                    self.reg[inst.x] = self.reg[inst.y] -% self.reg[inst.x];
                 },
                 0xE => {
                     std.log.info("{}: r[{}] = r[{}] ({}) << 1", .{ self.pc - 2, inst.x, inst.x, self.reg[inst.x] });
-                    self.reg[0xF] = self.reg[inst.x] & 0x80;
+                    self.reg[0xF] = if (self.reg[inst.x] & 0x80 != 0) 1 else 0;
                     self.reg[inst.x] = self.reg[inst.x] << 1;
                 },
                 else => {
-                    @panic("0x8*NN unimplemented");
+                    @panic("0x8*NN variant uknown");
                 },
             },
             0x9 => {
@@ -195,12 +207,13 @@ const Chip8 = struct {
                 self.index = inst.nnn;
             },
             0xB => {
-                std.log.info("{}: jump r[0] ({}) + {}", .{ self.pc + 2, self.reg[0], inst.nnn });
+                std.log.info("{}: jump r[0] ({}) + {}", .{ self.pc - 2, self.reg[0], inst.nnn });
                 self.pc = self.reg[0] + inst.nnn;
             },
             0xC => {
-                //random
-                std.log.info("random unimplemented", .{});
+                const rand = prng.random().int(u8);
+                std.log.info("{}: r[{}] = rand ({}) & {}", .{ self.pc - 2, inst.x, rand, inst.nn });
+                self.reg[inst.x] = inst.nn & rand;
             },
             0xD => {
                 // draw sprite
@@ -227,7 +240,7 @@ const Chip8 = struct {
                     }
                 },
                 else => {
-                    @panic("0xE*NN unimplemented");
+                    @panic("0xE*NN variant uknown");
                 },
             },
             0xF => switch (inst.nn) {
@@ -265,18 +278,21 @@ const Chip8 = struct {
                     self.index = 0x50 + self.reg[inst.x] * 5;
                 },
                 0x33 => {
-                    std.log.info("{}: mem[index ({}):] = bcd reg[{}] ({})", .{ self.pc - 2, self.index, inst.x, self.reg[inst.x] });
+                    self.mem[self.index] = self.reg[inst.x] / 100;
+                    self.mem[self.index + 1] = (self.reg[inst.x] - self.mem[self.index] * 100) / 10;
+                    self.mem[self.index + 2] = self.reg[inst.x] - self.mem[self.index] * 100 - self.mem[self.index + 1] * 10;
+                    std.log.info("{}: bcd r[{}] ({}): mem[index] = {}, mem[index+1] = {}, mem[index+2] = {}", .{ self.pc - 2, inst.x, self.reg[inst.x], self.mem[self.index], self.mem[self.index + 1], self.mem[self.index + 2] });
                 },
                 0x55 => {
-                    std.log.info("{}: store mem[index ({})] reg[{}:]", .{ self.pc - 2, self.index, inst.x });
-                    @memcpy(@ptrCast([*]u8, self.mem[self.index..]), @ptrCast([*]u8, self.reg[inst.x..]), 2 * (15 - inst.x));
+                    std.log.info("{}: store mem[index ({})] reg[:{}+1]", .{ self.pc - 2, self.index, inst.x });
+                    @memcpy(@ptrCast([*]u8, self.mem[self.index..]), @ptrCast([*]u8, self.reg[0..]), 2 * (1 + @intCast(usize, inst.x)));
                 },
                 0x65 => {
-                    std.log.info("{}: load mem[i ({})] reg[{}:]", .{ self.pc - 2, self.index, inst.x });
-                    @memcpy(@ptrCast([*]u8, self.reg[inst.x..]), @ptrCast([*]u8, self.mem[self.index..]), 2 * (15 - inst.x));
+                    std.log.info("{}: load mem[index ({})] reg[:{}+1]", .{ self.pc - 2, self.index, inst.x });
+                    @memcpy(@ptrCast([*]u8, self.reg[0..]), @ptrCast([*]u8, self.mem[self.index..]), 2 * (1 + @intCast(usize, inst.x)));
                 },
                 else => {
-                    @panic("0xF*NN unimplemented");
+                    @panic("0xF*NN variant uknown");
                 },
             },
         }
