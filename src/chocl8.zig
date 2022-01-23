@@ -105,7 +105,7 @@ const Chip8 = struct {
                 },
                 0xE0 => {
                     std.log.info("{}: clear fbuf", .{self.pc - 2});
-                    @memset(@ptrCast([*]u8, self.fbuf[0..]), 0, @sizeOf(u32) * self.fbuf.len);
+                    @memset(@ptrCast([*]u8, self.fbuf[0..]), 0, @sizeOf(u64) * self.fbuf.len);
                 },
                 else => {
                     @panic("0x0*NN variant uknown");
@@ -229,14 +229,14 @@ const Chip8 = struct {
             0xE => switch (inst.nn) {
                 0x9E => {
                     std.log.info("{}: jump pc+2 ({}) if keys[r[{}] ({})]", .{ self.pc - 2, self.pc + 2, inst.x, self.reg[inst.x] });
-                    if (0 != (keys & self.reg[inst.x])) {
-                        self.pc += 1;
+                    if (0 != (keys & (@intCast(u16, 1) << @truncate(u4, self.reg[inst.x])))) {
+                        self.pc += 2;
                     }
                 },
                 0xA1 => {
                     std.log.info("{}: jump pc+2 ({}) if !keys[r[{}] ({})]", .{ self.pc - 2, self.pc + 2, inst.x, self.reg[inst.x] });
-                    if (0 == (keys & self.reg[inst.x])) {
-                        self.pc += 1;
+                    if (0 == (keys & (@intCast(u16, 1) << @truncate(u4, self.reg[inst.x])))) {
+                        self.pc += 2;
                     }
                 },
                 else => {
@@ -251,9 +251,9 @@ const Chip8 = struct {
                 0x0A => {
                     std.log.info("{}: wait k; reg[{}] = k", .{ self.pc - 2, inst.x });
                     if (keys != 0) {
-                        var i: u4 = 0;
+                        var i: u5 = 0;
                         while (i < 16) : (i += 1) {
-                            if ((keys & (@intCast(u16, 1) << i)) != 0) {
+                            if ((keys & (@intCast(u16, 1) << @truncate(u4, i))) != 0) {
                                 self.reg[inst.x] = i;
                             }
                         }

@@ -63,12 +63,12 @@ pub fn main() anyerror!void {
         while (sdl.pollEvent()) |ev| {
             switch (ev) {
                 .quit => break :mainLoop,
-                .key_down => keys |= keymap(ev.key_down.keycode),
+                .key_down => keys |= keymap(ev.key_down.scancode),
                 .key_up => switch (ev.key_up.keycode) {
                     .s => if (!autorun) chocl8.chip8.step(keys),
                     .r => autorun = true,
-                    .q => return,
-                    else => keys &= ~keymap(ev.key_up.keycode),
+                    .h => return,
+                    else => keys &= ~keymap(ev.key_up.scancode),
                 },
                 else => {},
             }
@@ -94,27 +94,28 @@ pub fn main() anyerror!void {
     }
 }
 
-fn keymap(keycode: sdl.Keycode) u16 {
+fn keymap(keycode: sdl.Scancode) u16 {
     switch (keycode) {
-        .@"0" => return 1 << 0,
-        .@"1" => return 1 << 1,
-        .@"2" => return 1 << 2,
-        .@"3" => return 1 << 3,
-        .@"4" => return 1 << 4,
-        .@"5" => return 1 << 5,
-        .@"6" => return 1 << 6,
-        .@"7" => return 1 << 7,
-        .@"8" => return 1 << 8,
-        .@"9" => return 1 << 9,
-        .a => return 1 << 0xA,
-        .b => return 1 << 0xB,
-        .c => return 1 << 0xC,
-        .d => return 1 << 0xD,
-        .e => return 1 << 0xE,
-        .f => return 1 << 0xF,
+        .@"1" => return 1 << 0x0,
+        .@"2" => return 1 << 0x1,
+        .@"3" => return 1 << 0x2,
+        .@"4" => return 1 << 0xC,
+        .q => return 1 << 0x4,
+        .w => return 1 << 0x5,
+        .e => return 1 << 0x6,
+        .r => return 1 << 0xD,
+        .a => return 1 << 0x7,
+        .s => return 1 << 0x8,
+        .d => return 1 << 0x9,
+        .f => return 1 << 0xE,
+        .z => return 1 << 0xA,
+        .x => return 1 << 0x0,
+        .c => return 1 << 0xB,
+        .v => return 1 << 0xF,
         else => return 0,
     }
 }
+
 test "basic test" {
     try std.testing.expectEqual(10, 3 + 7);
 }
