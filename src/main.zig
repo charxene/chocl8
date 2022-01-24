@@ -44,7 +44,7 @@ pub fn main() anyerror!void {
 
     if (std.os.argv.len > 1) {
         std.log.info("loading rom from {s}", .{std.os.argv[1]});
-        const file = try std.fs.openFileAbsolute(
+        const file = try std.fs.cwd().openFile(
             std.mem.span(std.os.argv[1]),
             .{ .read = true },
         );
