@@ -168,7 +168,7 @@ const Chip8 = struct {
                 },
                 0x4 => {
                     std.log.info("{}: r[{}] += r[{}] ({})", .{ self.pc - 2, inst.x, inst.y, self.reg[inst.y] });
-                    const result = @intCast(u32, self.reg[inst.x]) + @intCast(u32, self.reg[inst.y]);
+                    const result = @as(u32, self.reg[inst.x]) + @as(u32, self.reg[inst.y]);
                     self.reg[0xF] = if (result > 0xFF) 1 else 0;
                     self.reg[inst.x] = @truncate(u8, result);
                 },
@@ -223,19 +223,19 @@ const Chip8 = struct {
                 const y: u8 = self.reg[@truncate(u4, inst.y)] % 32;
                 var i: usize = 0;
                 while ((i < height) and (y + i < 32)) : (i += 1) {
-                    self.fbuf[y + i] ^= @intCast(u64, self.mem[self.index + i]) << @truncate(u6, 8 * 7 - x);
+                    self.fbuf[y + i] ^= @as(u64, self.mem[self.index + i]) << @truncate(u6, 8 * 7 - x);
                 }
             },
             0xE => switch (inst.nn) {
                 0x9E => {
                     std.log.info("{}: jump pc+2 ({}) if keys[r[{}] ({})]", .{ self.pc - 2, self.pc + 2, inst.x, self.reg[inst.x] });
-                    if (0 != (keys & (@intCast(u16, 1) << @truncate(u4, self.reg[inst.x])))) {
+                    if (0 != (keys & (@as(u16, 1) << @truncate(u4, self.reg[inst.x])))) {
                         self.pc += 2;
                     }
                 },
                 0xA1 => {
                     std.log.info("{}: jump pc+2 ({}) if !keys[r[{}] ({})]", .{ self.pc - 2, self.pc + 2, inst.x, self.reg[inst.x] });
-                    if (0 == (keys & (@intCast(u16, 1) << @truncate(u4, self.reg[inst.x])))) {
+                    if (0 == (keys & (@as(u16, 1) << @truncate(u4, self.reg[inst.x])))) {
                         self.pc += 2;
                     }
                 },
@@ -253,7 +253,7 @@ const Chip8 = struct {
                     if (keys != 0) {
                         var i: u5 = 0;
                         while (i < 16) : (i += 1) {
-                            if ((keys & (@intCast(u16, 1) << @truncate(u4, i))) != 0) {
+                            if ((keys & (@as(u16, 1) << @truncate(u4, i))) != 0) {
                                 self.reg[inst.x] = i;
                             }
                         }
@@ -285,11 +285,11 @@ const Chip8 = struct {
                 },
                 0x55 => {
                     std.log.info("{}: store mem[index ({})] reg[:{}+1]", .{ self.pc - 2, self.index, inst.x });
-                    @memcpy(@ptrCast([*]u8, self.mem[self.index..]), @ptrCast([*]u8, self.reg[0..]), 2 * (1 + @intCast(usize, inst.x)));
+                    @memcpy(@ptrCast([*]u8, self.mem[self.index..]), @ptrCast([*]u8, self.reg[0..]), 2 * (1 + @as(usize, inst.x)));
                 },
                 0x65 => {
                     std.log.info("{}: load mem[index ({})] reg[:{}+1]", .{ self.pc - 2, self.index, inst.x });
-                    @memcpy(@ptrCast([*]u8, self.reg[0..]), @ptrCast([*]u8, self.mem[self.index..]), 2 * (1 + @intCast(usize, inst.x)));
+                    @memcpy(@ptrCast([*]u8, self.reg[0..]), @ptrCast([*]u8, self.mem[self.index..]), 2 * (1 + @as(usize, inst.x)));
                 },
                 else => {
                     @panic("0xF*NN variant uknown");

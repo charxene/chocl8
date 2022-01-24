@@ -8,11 +8,10 @@ fn draw(renderer: sdl.Renderer, fbuf: [32]u64) anyerror!void {
     while (k < 64) : (k += 1) {
         var j: u7 = 0;
         while (j < fbuf.len) : (j += 1) {
-            // std.log.info("{}, {}, {}, {}", .{ j, k, fbuf[j], (fbuf[j] & (@intCast(u32, 1) << @truncate(u5, k))) });
-            if ((fbuf[j] & (@intCast(u64, 1) << @truncate(u6, 64 - k))) != 0) {
+            if ((fbuf[j] & (@as(u64, 1) << @truncate(u6, 64 - k))) != 0) {
                 try renderer.fillRect(sdl.Rectangle{
-                    .x = @intCast(c_int, k) * 10,
-                    .y = @intCast(c_int, j) * 10,
+                    .x = @as(c_int, k) * 10,
+                    .y = @as(c_int, j) * 10,
                     .width = 10,
                     .height = 10,
                 });
