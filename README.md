@@ -27,9 +27,9 @@ The 16 keys physical keys bounded by 1234 at the top and zxcv
 at the bottom represent the hex num pad. Additionally, these keys 
 are also defined: 
 
-`h` quit chocl8
-`s` step a single cycle
-`r` run chocl8
+* `h` quit chocl8
+* `s` step a single cycle
+* `r` run chocl8
 
 ## Resources
 
